@@ -3,12 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/hashicorp/memberlist"
 	"github.com/urfave/cli"
+	"github.com/valerylobachev/cluster-sharding-proto/sharding"
 	"log"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 )
@@ -16,28 +15,9 @@ import (
 func action(c *cli.Context) {
 	port := c.Int("port")
 	seed := c.String("join")
-	conf := memberlist.DefaultLocalConfig()
-	conf.Name = "node" + strconv.Itoa(port%100)
-	conf.BindPort = port // avoid port confliction
-	conf.AdvertisePort = conf.BindPort
-	conf.Events = new(ClusterEventDelegate)
-
-	list, err := memberlist.Create(conf)
+	shardMan, err := sharding.NewShardManager(port, seed)
 	if err != nil {
 		log.Fatal(err)
-	}
-
-	local := list.LocalNode()
-	list.Join([]string{
-		fmt.Sprintf("%s:%d", local.Addr.To4().String(), local.Port),
-	})
-
-	log.Printf("cluster join to %s", seed)
-
-	if len(seed) != 0 {
-		if _, err := list.Join([]string{seed}); err != nil {
-			log.Fatal(err)
-		}
 	}
 
 	stopCtx, cancel := context.WithCancel(context.TODO())
@@ -49,28 +29,18 @@ func action(c *cli.Context) {
 		select {
 		case <-tick.C:
 			fmt.Println("Tick")
-			//devt := conf.Events.(*ClusterEventDelegate)
-			//if devt == nil {
-			//	log.Printf("consistent isnt initialized")
-			//	continue
+			//members := shardMan.List.Members()
+			//for _, m := range members {
+			//	fmt.Println(m.Name, m.Addr, m.Port)
 			//}
-			//log.Printf("current node size: %d", devt.consistent.Size())
-			//
-			//keys := []string{"a1", "a2", "a3", "a4", "a5"}
-			//for _, key := range keys {
-			//	node, ok := devt.consistent.GetNode(key)
-			//	if ok == true {
-			//		log.Printf("node1 key %s => %s", key, node)
-			//	} else {
-			//		log.Printf("no node available")
-			//	}
-			//}
+			shardMan.LogKeys()
 		case <-stopCtx.Done():
 			log.Printf("stop called")
 			run = false
 		}
 	}
 	tick.Stop()
+	shardMan.Leave(100 * time.Millisecond)
 	log.Printf("bye.")
 
 }
