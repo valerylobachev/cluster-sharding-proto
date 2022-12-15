@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/urfave/cli"
+	"github.com/valerylobachev/cluster-sharding-proto/server"
 	"github.com/valerylobachev/cluster-sharding-proto/sharding"
 	"log"
 	"os"
@@ -19,6 +20,8 @@ func action(c *cli.Context) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	srv, err := server.StartServer(port+100, shardMan)
 
 	stopCtx, cancel := context.WithCancel(context.TODO())
 	go waitSignal(cancel)
@@ -40,6 +43,7 @@ func action(c *cli.Context) {
 		}
 	}
 	tick.Stop()
+	srv.Stop()
 	shardMan.Leave(100 * time.Millisecond)
 	log.Printf("bye.")
 
