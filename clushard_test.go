@@ -4,12 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/valerylobachev/cluster-sharding-proto/server"
+	rand2 "golang.org/x/exp/rand"
+	"math/rand"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
-const KEY_NUM = 10
+const KEY_NUM = 1000
 
 func Test_Clushard(t *testing.T) {
 	dist := make(map[string]int)
@@ -27,10 +30,18 @@ func Test_Clushard(t *testing.T) {
 	}
 }
 
+func Benchmark_Clushard(b *testing.B) {
+	rand.Seed(time.Now().UnixNano())
+	for i := 0; i < b.N; i++ {
+		key := fmt.Sprintf("Person|P%04d", rand2.Intn(1000))
+		_, _ = callClushard(key)
+	}
+}
+
 func keyGen(n int) []string {
 	keys := make([]string, n)
 	for i := 0; i < n; i++ {
-		keys[i] = fmt.Sprintf("%04d", i)
+		keys[i] = fmt.Sprintf("Person|P%04d", i)
 	}
 	return keys
 }
