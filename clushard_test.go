@@ -12,12 +12,13 @@ import (
 	"time"
 )
 
-const KEY_NUM = 1000
+const KEY_NUM = 100
+const MAX_KEY_NUM = 100000
 
 func Test_Clushard(t *testing.T) {
 	dist := make(map[string]int)
 	for _, key := range keyGen(KEY_NUM) {
-		res, _ := callClushard(key)
+		res, _ := callClushard(key, "inc")
 		dist[res.Server]++
 		//if res != nil {
 		//	fmt.Printf("%s %s\n", key, res.Server)
@@ -30,12 +31,30 @@ func Test_Clushard(t *testing.T) {
 	}
 }
 
-func Benchmark_Clushard(b *testing.B) {
+func Benchmark_ClushardInc(b *testing.B) {
+	errors := 0
 	rand.Seed(time.Now().UnixNano())
 	for i := 0; i < b.N; i++ {
-		key := fmt.Sprintf("Person|P%04d", rand2.Intn(1000))
-		_, _ = callClushard(key)
+		key := fmt.Sprintf("Person|P%04d", rand2.Intn(MAX_KEY_NUM))
+		res, err := callClushard(key, "inc")
+		if err != nil || res.Err != "" {
+			errors++
+		}
 	}
+	//log.Printf("Total errors: %d\n", errors)
+}
+
+func Benchmark_ClushardGet(b *testing.B) {
+	errors := 0
+	rand.Seed(time.Now().UnixNano())
+	for i := 0; i < b.N; i++ {
+		key := fmt.Sprintf("Person|P%04d", rand2.Intn(MAX_KEY_NUM))
+		res, err := callClushard(key, "get")
+		if err != nil || res.Err != "" {
+			errors++
+		}
+	}
+	//log.Printf("Total errors: %d\n", errors)
 }
 
 func keyGen(n int) []string {
@@ -46,11 +65,11 @@ func keyGen(n int) []string {
 	return keys
 }
 
-func callClushard(key string) (*server.Response, error) {
+func callClushard(key string, msg string) (*server.Response, error) {
 	url := getUrl()
 	method := "POST"
 
-	payload := strings.NewReader(fmt.Sprintf("{\"key\": \"%s\",\"msg\": \"inc\"}", key))
+	payload := strings.NewReader(fmt.Sprintf("{\"key\": \"%s\",\"msg\": \"%s\"}", key, msg))
 
 	client := &http.Client{}
 	req, err := http.NewRequest(method, url, payload)

@@ -14,16 +14,18 @@ type ShardManager struct {
 	List     *memberlist.Memberlist
 	local    string
 	ring     *hash.ConsistentHash
+	factory  EntityFactory
 	m        sync.RWMutex
-	entities map[string]Actor
+	entities map[string]EntityActor
 }
 
-func NewShardManager(port int, seed string) (*ShardManager, error) {
+func NewShardManager(port int, seed string, factory EntityFactory) (*ShardManager, error) {
 
 	sm := &ShardManager{
 		List:     nil,
 		ring:     hash.NewConsistentHash(),
-		entities: make(map[string]Actor),
+		factory:  factory,
+		entities: make(map[string]EntityActor),
 	}
 	conf := memberlist.DefaultLocalConfig()
 	conf.Name = "node" + strconv.Itoa(port%100)
@@ -79,8 +81,7 @@ func (s *ShardManager) Ask(key string, msg string) (ans string, err error) {
 	if ok {
 		return entity.Process(msg)
 	} else {
-		entity = &Counter{}
-		err := entity.Start(key)
+		entity, err = s.factory.Build(key)
 		if err != nil {
 			return "", err
 		}

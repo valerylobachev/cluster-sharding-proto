@@ -22,7 +22,8 @@ func StartZeroServer(port int, sm *sharding.ShardManager) (*ZeroServer, error) {
 	engine := rest.MustNewServer(rest.RestConf{
 		ServiceConf: service.ServiceConf{
 			Log: logx.LogConf{
-				Mode: "console",
+				Mode:  "console",
+				Level: "error",
 			},
 		},
 		Port:     port,
@@ -33,8 +34,8 @@ func StartZeroServer(port int, sm *sharding.ShardManager) (*ZeroServer, error) {
 		engine: engine,
 	}
 	engine.AddRoute(rest.Route{
-		Method:  http.MethodGet,
-		Path:    "/demo",
+		Method:  http.MethodPost,
+		Path:    "/process",
 		Handler: server.handler,
 	})
 	log.Println("Start server")
@@ -46,7 +47,7 @@ func StartZeroServer(port int, sm *sharding.ShardManager) (*ZeroServer, error) {
 
 func (s *ZeroServer) handler(w http.ResponseWriter, r *http.Request) {
 	var req = new(Request)
-	err := httpx.Parse(r, &req)
+	err := httpx.Parse(r, req)
 	if err != nil {
 		log.Printf("failed to decode request")
 		res := Response{

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/urfave/cli"
+	"github.com/valerylobachev/cluster-sharding-proto/counter"
 	"github.com/valerylobachev/cluster-sharding-proto/server"
 	"github.com/valerylobachev/cluster-sharding-proto/sharding"
 	"log"
@@ -14,9 +15,14 @@ import (
 )
 
 func action(c *cli.Context) {
+	dsn := "postgresql://postgres:postgres@localhost:5432/counter?sslmode=disable"
+	factory, err := counter.NewCounterFactory(dsn)
+	if err != nil {
+		log.Fatal(err)
+	}
 	port := c.Int("port")
 	seed := c.String("join")
-	shardMan, err := sharding.NewShardManager(port, seed)
+	shardMan, err := sharding.NewShardManager(port, seed, factory)
 	if err != nil {
 		log.Fatal(err)
 	}
