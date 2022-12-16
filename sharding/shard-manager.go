@@ -97,9 +97,9 @@ func (s *ShardManager) RefreshEntities() {
 		log.Printf("Local node: %v", s.local)
 		s.m.Lock()
 		for key, _ := range s.entities {
-			n, ok := s.ring.Get(key)
+			n, _ := s.ring.Get(key)
 			node := n.(string)
-			log.Printf("key: %s, node: %s, ok: %v\n", key, node, ok)
+			//log.Printf("key: %s, node: %s, ok: %v\n", key, node, ok)
 			if node != s.local {
 				entity, ok := s.entities[key]
 				if ok {
@@ -120,11 +120,11 @@ func (s *ShardManager) RefreshEntities() {
 func (s *ShardManager) LogKeys() {
 	s.m.RLock()
 	log.Printf("Node has %v keys\n", len(s.entities))
-	for k, _ := range s.entities {
-		log.Printf("- %s \n", k)
-	}
+	//for k, _ := range s.entities {
+	//	log.Printf("- %s \n", k)
+	//}
 	s.m.RUnlock()
-	fmt.Println()
+	//fmt.Println()
 }
 
 func (s *ShardManager) Leave(duration time.Duration) {

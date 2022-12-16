@@ -21,7 +21,7 @@ func action(c *cli.Context) {
 		log.Fatal(err)
 	}
 
-	srv, err := server.StartServer(port+100, shardMan)
+	srv, err := server.StartZeroServer(port+100, shardMan)
 
 	stopCtx, cancel := context.WithCancel(context.TODO())
 	go waitSignal(cancel)

@@ -1,29 +1,13 @@
 package server
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/valerylobachev/cluster-sharding-proto/sharding"
-	"io"
 	"log"
 	"net"
 	"net/http"
-	"strconv"
-	"strings"
 )
-
-type Request struct {
-	Key string `json:"key"`
-	Msg string `json:"msg"`
-}
-
-type Response struct {
-	Key    string `json:"key"`
-	Server string `json:"server"`
-	Res    string `json:"res"`
-	Err    string `json:"err,omitempty"`
-}
 
 type Server struct {
 	sm       *sharding.ShardManager
@@ -34,9 +18,9 @@ func StartServer(port int, sm *sharding.ShardManager) (*Server, error) {
 	server := &Server{
 		sm: sm,
 	}
-	http.HandleFunc("/process", server.Handler)
+	http.HandleFunc("/process", server.handler)
 
-	log.Println("Starting server...")
+	log.Println("Start server")
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -49,7 +33,7 @@ func StartServer(port int, sm *sharding.ShardManager) (*Server, error) {
 	return server, nil
 }
 
-func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 	var req Request
 
 	err := json.NewDecoder(r.Body).Decode(&req)
@@ -61,74 +45,22 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 			Res:    "",
 			Err:    err.Error(),
 		}
-		writeResponse(w, res)
+		writeResponse(w, &res)
 		return
 	}
-	log.Printf("get Request %v", req)
+	//log.Printf("get Request %v", req)
 
 	node, local := s.sm.GetNode(req.Key)
 	if local {
-		ans, err := s.sm.Ask(req.Key, req.Msg)
-		res := Response{
-			Key:    req.Key,
-			Server: node,
-			Res:    ans,
-			Err:    "",
-		}
-		if err != nil {
-			res.Err = err.Error()
-		}
-		writeResponse(w, res)
+		resp := requestLocal(s.sm, node, &req)
+		writeResponse(w, resp)
 		return
-	}
-
-	requestSibling(node, req, w)
-	return
-
-	res := Response{
-		Key:    req.Key,
-		Server: node,
-		Res:    "",
-		Err:    fmt.Sprintf("actor located on node %s", node),
-	}
-	writeResponse(w, res)
-}
-
-func requestSibling(node string, req Request, w http.ResponseWriter) {
-	addr := getSiblingAddr(node)
-	buf := bytes.Buffer{}
-	json.NewEncoder(&buf).Encode(req)
-
-	resp, err := http.Post(addr, "application/json", &buf)
-	if err != nil {
-		res := Response{
-			Key:    req.Key,
-			Server: node,
-			Res:    "",
-			Err:    err.Error(),
-		}
-		writeResponse(w, res)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	io.Copy(w, resp.Body)
-}
-
-func getSiblingAddr(node string) string {
-	split := strings.Split(node, ":")
-	host := split[0]
-	port, _ := strconv.Atoi(split[1])
-	return fmt.Sprintf("http://%s:%d/process", host, port+100)
-}
-
-func writeResponse(w http.ResponseWriter, res Response) {
-	w.Header().Set("Content-Type", "application/json")
-	if len(res.Err) == 0 {
-		w.WriteHeader(http.StatusOK)
 	} else {
-		w.WriteHeader(http.StatusInternalServerError)
+		resp := requestSibling(node, &req)
+		writeResponse(w, resp)
+		return
 	}
-	json.NewEncoder(w).Encode(res)
+
 }
 
 func (s *Server) Stop() error {

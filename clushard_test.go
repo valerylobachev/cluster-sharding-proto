@@ -47,7 +47,7 @@ func keyGen(n int) []string {
 }
 
 func callClushard(key string) (*server.Response, error) {
-	url := "http://localhost:8100/process"
+	url := getUrl()
 	method := "POST"
 
 	payload := strings.NewReader(fmt.Sprintf("{\"key\": \"%s\",\"msg\": \"inc\"}", key))
@@ -74,4 +74,14 @@ func callClushard(key string) (*server.Response, error) {
 
 	return &response, nil
 
+}
+
+func getUrl() string {
+	urls := []string{
+		"http://localhost:8100/process",
+		"http://localhost:8101/process",
+		"http://localhost:8102/process",
+		"http://localhost:8103/process",
+	}
+	return urls[rand.Intn(len(urls))]
 }
