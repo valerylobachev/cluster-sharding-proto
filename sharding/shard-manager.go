@@ -3,9 +3,7 @@ package sharding
 import (
 	"fmt"
 	"github.com/hashicorp/memberlist"
-	"github.com/serialx/hashring"
-	"github.com/spaolacci/murmur3"
-	"hash"
+	"github.com/zeromicro/go-zero/core/hash"
 	"log"
 	"strconv"
 	"sync"
@@ -15,26 +13,16 @@ import (
 type ShardManager struct {
 	List     *memberlist.Memberlist
 	local    string
-	ring     *hashring.HashRing
+	ring     *hash.ConsistentHash
 	m        sync.RWMutex
 	entities map[string]Actor
 }
-
-var hashFunc = func() hashring.HashFunc {
-	hashFunc, err := hashring.NewHash(func() hash.Hash {
-		return murmur3.New128().(hash.Hash)
-	}).Use(hashring.NewInt64PairHashKey)
-	if err != nil {
-		panic(fmt.Sprintf("failed to create hashFunc: %s", err.Error()))
-	}
-	return hashFunc
-}()
 
 func NewShardManager(port int, seed string) (*ShardManager, error) {
 
 	sm := &ShardManager{
 		List:     nil,
-		ring:     hashring.NewWithHash([]string{}, hashFunc),
+		ring:     hash.NewConsistentHash(),
 		entities: make(map[string]Actor),
 	}
 	conf := memberlist.DefaultLocalConfig()
@@ -64,21 +52,21 @@ func NewShardManager(port int, seed string) (*ShardManager, error) {
 
 func (s *ShardManager) AddNode(node string) {
 	log.Printf("Add node: %s\n", node)
-	s.ring = s.ring.AddNode(node)
+	s.ring.Add(node)
 	s.RefreshEntities()
 }
 
 func (s *ShardManager) RemoveNode(node string) {
 	log.Printf("Remove node: %s\n", node)
-	s.ring = s.ring.RemoveNode(node)
+	s.ring.Remove(node)
 	s.RefreshEntities()
 }
 
 func (s *ShardManager) GetNode(key string) (node string, isLocal bool) {
 	if len(s.local) != 0 {
-		node, ok := s.ring.GetNode(key)
+		node, ok := s.ring.Get(key)
 		if ok == true {
-			return node, node == s.local
+			return node.(string), node.(string) == s.local
 		}
 	}
 	return "", false
@@ -109,7 +97,8 @@ func (s *ShardManager) RefreshEntities() {
 		log.Printf("Local node: %v", s.local)
 		s.m.Lock()
 		for key, _ := range s.entities {
-			node, ok := s.ring.GetNode(key)
+			n, ok := s.ring.Get(key)
+			node := n.(string)
 			log.Printf("key: %s, node: %s, ok: %v\n", key, node, ok)
 			if node != s.local {
 				entity, ok := s.entities[key]

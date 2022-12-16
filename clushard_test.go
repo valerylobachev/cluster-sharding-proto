@@ -3,39 +3,36 @@ package cluster_sharding_proto
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/serialx/hashring"
-	"github.com/spaolacci/murmur3"
 	"github.com/valerylobachev/cluster-sharding-proto/server"
-	"hash"
 	"net/http"
 	"strings"
 	"testing"
 )
 
-const KEY_NUM = 20
-
-var hashFunc = func() hashring.HashFunc {
-	hashFunc, err := hashring.NewHash(func() hash.Hash {
-		return murmur3.New128().(hash.Hash)
-	}).Use(hashring.NewInt64PairHashKey)
-	if err != nil {
-		panic(fmt.Sprintf("failed to create hashFunc: %s", err.Error()))
-	}
-	return hashFunc
-}()
+const KEY_NUM = 10
 
 func Test_Clushard(t *testing.T) {
-	keys := make([]string, KEY_NUM)
-	for i := 0; i < KEY_NUM; i++ {
-		keys[i] = fmt.Sprintf("P%05d", i)
+	dist := make(map[string]int)
+	for _, key := range keyGen(KEY_NUM) {
+		res, _ := callClushard(key)
+		dist[res.Server]++
+		//if res != nil {
+		//	fmt.Printf("%s %s\n", key, res.Server)
+		//}
 	}
 
-	for _, key := range keys {
-		res, _ := callClushard(key)
-		if res != nil {
-			fmt.Printf("%s %s\n", key, res.Server)
-		}
+	fmt.Println("Distribution:")
+	for k, v := range dist {
+		fmt.Printf("%s %4d \n", k, v)
 	}
+}
+
+func keyGen(n int) []string {
+	keys := make([]string, n)
+	for i := 0; i < n; i++ {
+		keys[i] = fmt.Sprintf("%04d", i)
+	}
+	return keys
 }
 
 func callClushard(key string) (*server.Response, error) {

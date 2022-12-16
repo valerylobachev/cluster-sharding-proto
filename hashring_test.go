@@ -3,63 +3,61 @@ package cluster_sharding_proto
 import (
 	"fmt"
 	"github.com/serialx/hashring"
+	"github.com/spaolacci/murmur3"
+	"hash"
 	"testing"
 )
 
-var keys = []string{"Person|P0001", "Person|P0002", "Person|P0003", "Person|P0004", "Person|P0005", "Person|P0006", "Person|P0007", "Person|P0008", "Person|P0009"}
+var hosts = []string{"192.168.0.101:8001", "192.168.0.101:8002", "192.168.0.101:8000", "192.168.0.101:8003"} //, "192.168.0.101:8000", "192.168.0.101:8000"}
 
-func Test_HR1(t *testing.T) {
-	test := "HR1"
-	hosts := []string{"host-1", "host-2", "host-3", "host-4", "host-5"}
-	ring := hashring.New([]string{"host-0"})
-	for _, host := range hosts {
-		ring = ring.AddNode(host)
+var hashFunc = func() hashring.HashFunc {
+	hashFunc, err := hashring.NewHash(func() hash.Hash {
+		return murmur3.New128().(hash.Hash)
+	}).Use(hashring.NewInt64PairHashKey)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create hashFunc: %s", err.Error()))
 	}
+	return hashFunc
+}()
 
-	for _, key := range keys {
-		host, _ := ring.GetNode(key)
-		fmt.Printf("%s %s %s\n", key, host, test)
-	}
-}
-
-func Test_HR2(t *testing.T) {
-	test := "HR2"
-	hosts := []string{"host-5", "host-4", "host-2", "host-1", "host-3", "host-0"}
+func Test_HR_md5(t *testing.T) {
+	//test := "HR2"
+	hosts := []string{"192.168.0.101:8001", "192.168.0.101:8002", "192.168.0.101:8000", "192.168.0.101:8003"} //, "192.168.0.101:8000", "192.168.0.101:8000"}
 	ring := hashring.New([]string{})
 	for _, host := range hosts {
 		ring = ring.AddNode(host)
 	}
 
-	for _, key := range keys {
+	dist := make(map[string]int)
+	for _, key := range keyGen(KEY_NUM) {
 		host, _ := ring.GetNode(key)
-		fmt.Printf("%s %s %s\n", key, host, test)
+		dist[host]++
+		//fmt.Printf("%s %s %s\n", key, host, test)
+	}
+
+	fmt.Println("Distribution:")
+	for k, v := range dist {
+		fmt.Printf("%s %4d \n", k, v)
 	}
 }
 
-func Test_HR1_mur(t *testing.T) {
-	test := "HR1_MUR"
-	hosts := []string{"host-1", "host-2", "host-3", "host-4", "host-5"}
-	ring := hashring.NewWithHash([]string{"host-0"}, hashFunc)
-	for _, host := range hosts {
-		ring = ring.AddNode(host)
-	}
-
-	for _, key := range keys {
-		host, _ := ring.GetNode(key)
-		fmt.Printf("%s %s %s\n", key, host, test)
-	}
-}
-
-func Test_HR2_mur(t *testing.T) {
-	test := "HR2_MUR"
-	hosts := []string{"host-5", "host-4", "host-2", "host-1", "host-3", "host-0"}
+func Test_HR_mur3(t *testing.T) {
+	//test := "HR2_MUR"
+	hosts := []string{"192.168.0.101:8001", "192.168.0.101:8002", "192.168.0.101:8000", "192.168.0.101:8003"} //, "192.168.0.101:8000", "192.168.0.101:8000"}
 	ring := hashring.NewWithHash([]string{}, hashFunc)
 	for _, host := range hosts {
-		ring = ring.AddNode(host)
+		ring = ring.AddWeightedNode(host, 1000)
 	}
 
-	for _, key := range keys {
+	dist := make(map[string]int)
+	for _, key := range keyGen(KEY_NUM) {
 		host, _ := ring.GetNode(key)
-		fmt.Printf("%s %s %s\n", key, host, test)
+		dist[host]++
+		//fmt.Printf("%s %s %s\n", key, host, test)
+	}
+
+	fmt.Println("Distribution:")
+	for k, v := range dist {
+		fmt.Printf("%s %4d \n", k, v)
 	}
 }
