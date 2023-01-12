@@ -8,12 +8,14 @@ import (
 	"math/rand"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
 const KEY_NUM = 100
-const MAX_KEY_NUM = 100000
+const MAX_KEY_NUM = 1000000
+const MAX_WORKER = 4
 
 func Test_Clushard(t *testing.T) {
 	dist := make(map[string]int)
@@ -32,19 +34,40 @@ func Test_Clushard(t *testing.T) {
 }
 
 func Benchmark_ClushardInc(b *testing.B) {
-	errors := 0
 	rand.Seed(time.Now().UnixNano())
 	for i := 0; i < b.N; i++ {
 		key := fmt.Sprintf("Person|P%04d", rand2.Intn(MAX_KEY_NUM))
-		res, err := callClushard(key, "inc")
-		if err != nil || res.Err != "" {
-			errors++
-		}
+		_, _ = callClushard(key, "inc")
 	}
+}
+
+func Benchmark_ClushardIncWithWorkers(b *testing.B) {
+	var wg sync.WaitGroup
+
+	rand.Seed(time.Now().UnixNano())
+	for i := 0; i < b.N; i++ {
+		if (i+1)%MAX_WORKER == 0 {
+			//log.Printf("waiting...\n")
+			wg.Wait()
+			//log.Printf("waiting done\n")
+		}
+		wg.Add(1)
+		//worker := i % MAX_WORKER
+		go func() {
+			//log.Printf("run worker %d\n", worker)
+			defer wg.Done()
+			key := fmt.Sprintf("Person|P%04d", rand2.Intn(MAX_KEY_NUM))
+			_, _ = callClushard(key, "inc")
+			//log.Printf("worker %d completed task\n", worker)
+		}()
+	}
+	//log.Printf("waiting...\n")
+	wg.Wait()
+	//log.Printf("waiting done\n")
 	//log.Printf("Total errors: %d\n", errors)
 }
 
-func Benchmark_ClushardGet(b *testing.B) {
+func XBenchmark_ClushardGet(b *testing.B) {
 	errors := 0
 	rand.Seed(time.Now().UnixNano())
 	for i := 0; i < b.N; i++ {
@@ -98,9 +121,9 @@ func callClushard(key string, msg string) (*server.Response, error) {
 func getUrl() string {
 	urls := []string{
 		"http://localhost:8100/process",
-		"http://localhost:8101/process",
-		"http://localhost:8102/process",
-		"http://localhost:8103/process",
+		//"http://localhost:8101/process",
+		//"http://localhost:8102/process",
+		//"http://localhost:8103/process",
 	}
 	return urls[rand.Intn(len(urls))]
 }
