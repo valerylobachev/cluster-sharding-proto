@@ -1,47 +1,31 @@
 package sharding
 
 import (
-	"crypto/md5"
 	"fmt"
 	"github.com/hashicorp/memberlist"
-	"github.com/serialx/hashring"
-	"github.com/spaolacci/murmur3"
-	"hash"
+	"github.com/zeromicro/go-zero/core/hash"
 	"log"
 	"strconv"
 	"sync"
 	"time"
 )
 
-const KEYS_NUM = 100000
-
 type ShardManager struct {
 	List     *memberlist.Memberlist
 	local    string
-	ring     *hashring.HashRing
+	ring     *hash.ConsistentHash
+	factory  EntityFactory
 	m        sync.RWMutex
-	entities map[string]string
-	keys     []string
+	entities map[string]EntityActor
 }
 
-var hashFunc = func() hashring.HashFunc {
-	md5.New()
-	hashFunc, err := hashring.NewHash(func() hash.Hash {
-		return murmur3.New128().(hash.Hash)
-	}).Use(hashring.NewInt64PairHashKey)
-	if err != nil {
-		panic(fmt.Sprintf("failed to create hashFunc: %s", err.Error()))
-	}
-	return hashFunc
-}()
-
-func NewShardManager(port int, seed string) (*ShardManager, error) {
+func NewShardManager(port int, seed string, factory EntityFactory) (*ShardManager, error) {
 
 	sm := &ShardManager{
 		List:     nil,
-		ring:     hashring.NewWithHash([]string{}, hashFunc),
-		entities: make(map[string]string),
-		keys:     generateKeys(KEYS_NUM),
+		ring:     hash.NewConsistentHash(),
+		factory:  factory,
+		entities: make(map[string]EntityActor),
 	}
 	conf := memberlist.DefaultLocalConfig()
 	conf.Name = "node" + strconv.Itoa(port%100)
@@ -68,56 +52,65 @@ func NewShardManager(port int, seed string) (*ShardManager, error) {
 	return sm, nil
 }
 
-func generateKeys(n int) []string {
-	keys := make([]string, n)
-	for i := 0; i < n; i++ {
-		keys[i] = fmt.Sprintf("Person|P%07d", i)
-	}
-	return keys
-}
-
 func (s *ShardManager) AddNode(node string) {
 	log.Printf("Add node: %s\n", node)
-	s.ring = s.ring.AddNode(node)
+	s.ring.Add(node)
 	s.RefreshEntities()
 }
 
 func (s *ShardManager) RemoveNode(node string) {
 	log.Printf("Remove node: %s\n", node)
-	s.ring = s.ring.RemoveNode(node)
+	s.ring.Remove(node)
 	s.RefreshEntities()
+}
+
+func (s *ShardManager) GetNode(key string) (node string, isLocal bool) {
+	if len(s.local) != 0 {
+		node, ok := s.ring.Get(key)
+		if ok == true {
+			return node.(string), node.(string) == s.local
+		}
+	}
+	return "", false
+}
+
+func (s *ShardManager) Ask(key string, msg string) (ans string, err error) {
+	s.m.RLock()
+	entity, ok := s.entities[key]
+	s.m.RUnlock()
+	if ok {
+		return entity.Process(msg)
+	} else {
+		entity, err = s.factory.Build(key)
+		if err != nil {
+			return "", err
+		}
+		s.m.Lock()
+		s.entities[key] = entity
+		s.m.Unlock()
+		return entity.Process(msg)
+	}
 }
 
 func (s *ShardManager) RefreshEntities() {
 	log.Println("RefreshEntities")
 	if len(s.local) != 0 {
 		log.Printf("Local node: %v", s.local)
-		for _, key := range s.keys {
-			node, ok := s.ring.GetNode(key)
-			if ok == true && node == s.local {
-				// add entity
-				s.m.RLock()
-				_, ok := s.entities[key]
-				s.m.RUnlock()
-				if !ok {
-					log.Printf("Add key: %s\n", key)
-					s.m.Lock()
-					s.entities[key] = key
-					s.m.Unlock()
-				}
-
-			} else {
-				s.m.RLock()
-				_, ok := s.entities[key]
-				s.m.RUnlock()
+		s.m.Lock()
+		for key, _ := range s.entities {
+			n, _ := s.ring.Get(key)
+			node := n.(string)
+			//log.Printf("key: %s, node: %s, ok: %v\n", key, node, ok)
+			if node != s.local {
+				entity, ok := s.entities[key]
 				if ok {
-					log.Printf("Remove key: %s\n", key)
-					s.m.Lock()
+					log.Printf("Remove actor: %s\n", key)
 					delete(s.entities, key)
-					s.m.Unlock()
+					go entity.Stop()
 				}
 			}
 		}
+		s.m.Unlock()
 		s.LogKeys()
 		fmt.Println()
 	} else {
@@ -127,9 +120,12 @@ func (s *ShardManager) RefreshEntities() {
 
 func (s *ShardManager) LogKeys() {
 	s.m.RLock()
-	log.Printf("Node has %v keys", len(s.entities))
+	log.Printf("Node has %v keys\n", len(s.entities))
+	//for k, _ := range s.entities {
+	//	log.Printf("- %s \n", k)
+	//}
 	s.m.RUnlock()
-	fmt.Println()
+	//fmt.Println()
 }
 
 func (s *ShardManager) Leave(duration time.Duration) {
